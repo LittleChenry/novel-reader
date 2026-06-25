@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reader</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; overflow: hidden; font-family: -apple-system, "Noto Sans SC", "Microsoft YaHei", "PingFang SC", sans-serif; background: #1a1a2e; color: #e0e0e0; }
+
+/* Layout */
+.wrapper { display: flex; height: 100vh; }
+.left-panel { width: 400px; min-width: 400px; background: #16213e; display: flex; flex-direction: column; border-right: 1px solid #2a3a5c; transition: margin-left 0.3s, opacity 0.3s; position: relative; }
+.left-panel.hidden { margin-left: -400px; opacity: 0; pointer-events: none; }
+.right-panel { flex: 1; display: flex; flex-direction: column; background: #fff; }
+.right-panel iframe { width: 100%; flex: 1; border: none; }
+
+/* Header */
+.panel-header { padding: 12px 16px; background: #0f3460; display: flex; align-items: center; gap: 10px; flex-shrink: 0; border-bottom: 1px solid #2a3a5c; }
+.panel-header h2 { font-size: 15px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #fff; font-weight: 500; }
+.panel-header button { background: none; border: 1px solid #3a5a8c; color: #bbb; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+.panel-header button:hover { background: #2a4a7c; color: #fff; }
+
+/* Input area */
+.input-area { padding: 16px; border-bottom: 1px solid #2a3a5c; flex-shrink: 0; }
+.input-area .row { display: flex; gap: 8px; margin-bottom: 8px; }
+.input-area select { width: auto; min-width: 90px; padding: 8px 6px; border: 1px solid #2a3a5c; border-radius: 4px; background: #0f3460; color: #eee; font-size: 12px; outline: none; cursor: pointer; }
+.input-area select option { background: #16213e; }
+.input-area input { flex: 1; padding: 8px 12px; border: 1px solid #2a3a5c; border-radius: 4px; background: #0f3460; color: #eee; font-size: 13px; outline: none; }
+.input-area .btn { padding: 8px 20px; background: #e74c3c; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; white-space: nowrap; }
+.input-area .btn:hover { background: #c0392b; }
+
+/* History list */
+.history-list { flex: 1; overflow-y: auto; padding: 8px 0; }
+.history-list::-webkit-scrollbar { width: 4px; }
+.history-list::-webkit-scrollbar-thumb { background: #2a3a5c; border-radius: 2px; }
+.history-item { display: flex; align-items: center; padding: 10px 16px; cursor: pointer; border-bottom: 1px solid #1a2a4a; transition: background 0.15s; }
+.history-item:hover { background: #1a2a4a; }
+.history-item .info { flex: 1; min-width: 0; }
+.history-item .info .title { font-size: 14px; color: #eee; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.history-item .info .meta { font-size: 11px; color: #888; margin-top: 2px; }
+.history-item .del-btn { background: none; border: none; color: #555; cursor: pointer; font-size: 16px; padding: 4px 8px; border-radius: 4px; }
+.history-item .del-btn:hover { color: #e74c3c; background: rgba(231,76,60,0.1); }
+.history-empty { text-align: center; padding: 40px 20px; color: #555; font-size: 13px; }
+
+/* Novel detail */
+.detail-area { flex: 1; overflow-y: auto; padding: 16px; }
+.detail-area::-webkit-scrollbar { width: 4px; }
+.detail-area::-webkit-scrollbar-thumb { background: #2a3a5c; border-radius: 2px; }
+.detail-area .novel-title { font-size: 13px; margin-bottom: 4px; color: #888; font-weight: 400; }
+.detail-area .desc { font-size: 13px; color: #aaa; line-height: 1.7; margin-bottom: 12px; }
+.detail-area .tags { margin-bottom: 12px; }
+.detail-area .tags span { display: inline-block; padding: 2px 8px; background: rgba(231,76,60,0.15); color: #e74c3c; border-radius: 8px; font-size: 11px; margin: 2px 3px; }
+.detail-area .section-title { font-size: 12px; color: #666; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid #1a2a4a; text-transform: uppercase; letter-spacing: 1px; }
+.chapter-list { display: flex; flex-direction: column; }
+.chapter-list a { display: block; padding: 5px 8px; font-size: 13px; color: #999; cursor: pointer; border-radius: 3px; transition: color 0.15s; }
+.chapter-list a:hover { color: #e0e0e0; background: transparent; }
+
+/* Reader (paginated) */
+.reader-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; background: #f6f6f7; }
+.reader-header { padding: 8px 16px; background: #e8e8ec; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.reader-header .chap-title { flex: 1; font-size: 13px; color: #3c3c43; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.reader-header .page-info { font-size: 12px; color: #8a8a8f; white-space: nowrap; }
+.reader-header button { background: none; border: 1px solid #c8c8cc; color: #3c3c43; padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+.reader-header button:hover { background: #d8d8dc; color: #000; }
+.reader-content { flex: 1; overflow: hidden; padding: 14px 24px; display: flex; flex-direction: column; justify-content: flex-start; cursor: pointer; }
+.reader-content .page-text { font-size: 14px; line-height: 1.9; color: #3c3c43; white-space: pre-wrap; word-wrap: break-word; max-height: 100%; overflow: hidden; }
+.reader-footer { padding: 8px 16px; text-align: center; font-size: 12px; color: #8a8a8f; flex-shrink: 0; background: #e8e8ec; }
+.reader-footer span { margin: 0 8px; cursor: pointer; }
+.reader-footer span:hover { color: #e74c3c; }
+.reader-footer .arrow { font-size: 14px; }
+
+/* Chapter overlay */
+.chapter-overlay { display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(246,246,247,0.97); z-index: 10; flex-direction: column; }
+.chapter-overlay.show { display: flex; }
+.chapter-overlay .overlay-header { padding: 12px 16px; background: #e8e8ec; display: flex; align-items: center; }
+.chapter-overlay .overlay-header h3 { flex: 1; font-size: 14px; color: #3c3c43; }
+.chapter-overlay .overlay-header button { background: none; border: none; color: #8a8a8f; font-size: 18px; cursor: pointer; }
+.chapter-overlay .overlay-list { flex: 1; overflow-y: auto; padding: 4px 0; }
+.chapter-overlay .overlay-list a { display: block; padding: 6px 16px; font-size: 13px; color: #3c3c43; cursor: pointer; transition: color 0.15s; }
+.chapter-overlay .overlay-list a:hover { color: #000; background: #e8e8ec; }
+.chapter-overlay .overlay-list a.active { color: #e74c3c; }
+
+/* Loading */
+.spinner { text-align: center; padding: 40px 20px; color: #888; font-size: 13px; }
+
+
+/* Footer */
+.page-footer { position: fixed; bottom: 0; left: 0; right: 0; height: 36px; z-index: 9998; background: rgba(0,0,0,0.15); display: flex; align-items: center; justify-content: center; font-size: 11px; color: #888; cursor: pointer; user-select: none; }
+
+/* Screensaver */
+.screensaver { display: none; position: fixed; inset: 0; z-index: 9999; background: #f6f6f7; align-items: center; justify-content: center; font-family: -apple-system, "Noto Sans SC", "Microsoft YaHei", sans-serif; }
+.screensaver.show { display: flex; }
+.screensaver .ss-text { font-size: 28px; color: #3c3c43; letter-spacing: 1px; user-select: none; }
+
+@media (max-width: 900px) {
+  .left-panel { width: 100%; min-width: 100%; }
+  .left-panel.hidden { margin-left: -100%; }
+  .right-panel { display: none; }
+}
+</style>
+</head>
+<body tabindex="-1">
+
+<div class="wrapper">
+  <!-- Left: Reader Panel -->
+  <div class="left-panel hidden" id="leftPanel">
+    <div class="panel-header">
+      <h2 id="panelTitle">Reader</h2>
+      <button onclick="logout()">退出</button>
+    </div>
+
+    <!-- Input area -->
+    <div class="input-area" id="inputArea">
+      <div class="row">
+        <select id="siteSelect"></select>
+        <input type="text" id="novelIdInput" placeholder="输入小说ID" onkeydown="if(event.key==='Enter')loadNovel()">
+        <button class="btn" onclick="loadNovel()">加载</button>
+      </div>
+    </div>
+
+    <!-- History list -->
+    <div class="history-list" id="historyList"></div>
+
+    <!-- Detail area (hidden initially) -->
+    <div class="detail-area" id="detailArea" style="display:none"></div>
+
+    <!-- Reader (hidden initially) -->
+    <div class="reader-area" id="readerArea" style="display:none">
+      <div class="reader-header">
+        <button onclick="showChapterOverlay()" title="章节列表">☰</button>
+        <span class="chap-title" id="chapTitle"></span>
+        <span class="page-info" id="pageInfo"></span>
+        <button onclick="backToDetail()">目录</button>
+        <button onclick="backToHistory()">主页</button>
+      </div>
+      <div class="reader-content" id="readerContent">
+        <div class="page-text" id="pageText"></div>
+      </div>
+      <div class="reader-footer">
+        <span class="arrow" onclick="prevPage()">◀</span>
+        <span id="pageNav" onclick="showPageJump()"></span>
+        <span class="arrow" onclick="nextPage()">▶</span>
+      </div>
+
+      <!-- Chapter overlay -->
+      <div class="chapter-overlay" id="chapterOverlay">
+        <div class="overlay-header">
+          <h3>章节列表</h3>
+          <button onclick="hideChapterOverlay()">✕</button>
+        </div>
+        <div class="overlay-list" id="chapterOverlayList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Learning site -->
+  <div class="right-panel">
+    <iframe src="https://learnopencode.com/2-daily/" title="OpenCode 教程"></iframe>
+  </div>
+</div>
+
+<div class="page-footer" id="pageFooter">Copyright © 2026 learnopencode. All rights reserved.</div>
+
+<div class="screensaver" id="screensaver">
+  <div class="ss-text">Welcome OpenCode Reader</div>
+</div>
+
+<div class="chapter-overlay" id="captchaOverlay">
+  <div class="chapter-overlay-content" onclick="event.stopPropagation()">
+    <div style="padding:20px;text-align:center">
+      <h3 style="margin-bottom:15px">需要验证码</h3>
+      <p style="margin-bottom:15px;font-size:13px;color:#999">该网站要求输入验证码才能继续访问</p>
+      <img id="captchaImage" style="max-width:240px;border:1px solid #444;border-radius:6px;margin-bottom:15px;cursor:pointer" onclick="refreshCaptcha()" title="点击刷新">
+      <div><input id="captchaInput" style="width:200px;padding:8px 12px;border:1px solid #555;border-radius:4px;background:#1a1a2e;color:#eee;font-size:16px;text-align:center;outline:none" placeholder="输入验证码" autocomplete="off"></div>
+      <div style="margin-top:15px;display:flex;gap:10px;justify-content:center">
+        <button onclick="submitCaptcha()" style="padding:8px 24px;background:#e74c3c;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:14px">提交</button>
+        <button onclick="closeCaptchaDialog()" style="padding:8px 24px;background:#333;color:#ccc;border:none;border-radius:4px;cursor:pointer;font-size:14px">取消</button>
+      </div>
+      <div id="captchaStatus" style="margin-top:10px;font-size:12px;color:#e74c3c"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// === State ===
+const STATE = {
+  site: "alicesw.com",
+  novelId: "",
+  novelTitle: "",
+  chapters: [],
+  currentChapIdx: 0,
+  pages: [],
+  currentPage: 0,
+  readerVisible: false,
+  preloadedIdx: -1,
+  preloadedContent: null,
+  lastActivity: Date.now(),
+  screensaverActive: false,
+};
+
+const SITE_API = {
+  "alicesw.com": "/api/alicesw",
+  "biquge": "/api/biquge",
+};
+
+function getApiPrefix(site) {
+  return site.includes("alicesw") ? "/api/alicesw" : "/api/biquge";
+}
+
+function cacheChapter(site, url, content) {
+  try { localStorage.setItem("c_" + site + "_" + url, content) } catch (e) {}
+}
+function getCachedChapter(site, url) {
+  try { return localStorage.getItem("c_" + site + "_" + url) || null } catch (e) { return null }
+}
+
+function preloadNextChapter(idx) {
+  if (idx < 0 || idx >= STATE.chapters.length) return;
+  const ch = STATE.chapters[idx];
+  const prefix = SITE_API[STATE.site] || getApiPrefix(STATE.site);
+  api(prefix + "/chapter/load", { method: "POST", body: { chapter_url: ch.url }, skipAuth: true })
+    .then(data => {
+      if (data) {
+        STATE.preloadedIdx = idx;
+        STATE.preloadedContent = data.content || "";
+        cacheChapter(STATE.site, ch.url, data.content || "");
+      }
+    })
+    .catch(() => {});
+}
+
+// === API ===
+async function api(url, opts) {
+  if (!opts) opts = {};
+  if (!opts.method) opts.method = "GET";
+  const skipAuth = opts.skipAuth || false;
+  delete opts.skipAuth;
+  opts.headers = { "Content-Type": "application/json" };
+  if (opts.body && typeof opts.body === "object") opts.body = JSON.stringify(opts.body);
+  const res = await fetch(url, opts);
+  if (res.status === 401) {
+    if (!skipAuth) { window.location.href = "/login"; }
+    return;
+  }
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "请求失败");
+  return data;
+}
+
+// === History ===
+async function loadHistory() {
+  try {
+    const history = await api("/api/history");
+    const list = document.getElementById("historyList");
+    list.innerHTML = '<div style="padding:4px 16px 8px;font-size:12px;color:#555">阅读历史</div>';
+    if (!history || history.length === 0) {
+      list.innerHTML += '<div class="history-empty">暂无阅读历史</div>';
+      return;
+    }
+    for (const h of history) {
+      const d = document.createElement("div");
+      d.className = "history-item";
+      const siteName = SITE_NAMES[h.site] || h.site;
+      d.innerHTML = `<div class="info">
+        <div class="title">${escHtml(h.novel_title)}</div>
+        <div class="meta">${escHtml(siteName)} · ${escHtml(h.chapter_title || '')} · 第${h.page}/${h.total_pages}页 · ${formatTime(h.updated_at)}</div>
+      </div>
+      <button class="del-btn" onclick="deleteHistory(${h.id},event)">×</button>`;
+      d.ondblclick = () => resumeHistory(h);
+      list.appendChild(d);
+    }
+  } catch (e) {
+    document.getElementById("historyList").innerHTML = '<div class="history-empty">加载历史失败</div>';
+  }
+}
+
+function formatTime(t) {
+  if (!t) return "";
+  const d = new Date(t);
+  return `${d.getMonth()+1}/${d.getDate()} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+}
+
+function escHtml(s) {
+  const d = document.createElement("div");
+  d.textContent = s || "";
+  return d.innerHTML;
+}
+
+function deleteHistory(id, e) {
+  e.stopPropagation();
+  api(`/api/history/${id}`, { method: "DELETE" }).then(() => loadHistory()).catch(() => {});
+}
+
+async function resumeHistory(h) {
+  STATE.site = h.site;
+  STATE.novelId = h.novel_id;
+  STATE.novelTitle = h.novel_title;
+  document.getElementById("panelTitle").textContent = "Reader";
+  document.getElementById("panelTitle").title = h.novel_title;
+
+  const cachedContent = getCachedChapter(h.site, h.chapter_url);
+
+  if (cachedContent) {
+    document.getElementById("historyList").style.display = "none";
+    document.getElementById("inputArea").style.display = "none";
+    STATE.chapters = [];
+    STATE.currentChapIdx = 0;
+    STATE.currentPage = Math.max(0, (h.page || 1) - 1);
+    document.getElementById("detailArea").style.display = "none";
+    document.getElementById("readerArea").style.display = "flex";
+    STATE.readerVisible = true;
+    document.getElementById("chapTitle").textContent = h.chapter_title || "...";
+    document.getElementById("pageText").textContent = "";
+    document.getElementById("pageInfo").textContent = "";
+    document.getElementById("chapterOverlay").classList.remove("show");
+    STATE.pages = paginate(cachedContent);
+    if (STATE.currentPage >= STATE.pages.length) STATE.currentPage = STATE.pages.length - 1;
+    showPage();
+  } else {
+    showLoading("获取中...");
+  }
+
+  try {
+    const data = await api(getApiPrefix(h.site) + "/novel/load", { method: "POST", body: { novel_id: h.novel_id } });
+    STATE.chapters = data.chapters || [];
+    const chapIdx = STATE.chapters.findIndex(c => c.url === h.chapter_url);
+    if (chapIdx >= 0) STATE.currentChapIdx = chapIdx;
+    showNovelDetail(data.info, data.chapters);
+
+    if (cachedContent) {
+      const ch = STATE.chapters[STATE.currentChapIdx];
+      if (ch) document.getElementById("chapTitle").textContent = ch.title;
+      document.getElementById("detailArea").style.display = "none";
+      saveCurrentProgress();
+      buildChapterOverlay();
+      preloadNextChapter(STATE.currentChapIdx + 1);
+    } else {
+      loadChapter(STATE.currentChapIdx, h.page - 1);
+    }
+  } catch (e) {
+    if (!cachedContent) showError(e.message);
+  }
+}
+
+// === Novel Loading ===
+async function loadNovel(novelId) {
+  const id = novelId || document.getElementById("novelIdInput").value.trim();
+  if (!id) return;
+  showLoading("加载小说中...");
+  STATE.novelId = id;
+  try {
+    const data = await api(SITE_API[STATE.site] + "/novel/load", { method: "POST", body: { novel_id: id } });
+    if (data && data.captcha) {
+      hideLoading();
+      showCaptchaDialog(data.captcha_image, data.captcha_action, data.captcha_redirect, () => loadNovel(novelId));
+      return;
+    }
+    STATE.chapters = data.chapters || [];
+    STATE.novelTitle = data.info.title || id;
+    document.getElementById("panelTitle").textContent = "Reader";
+    document.getElementById("panelTitle").title = STATE.novelTitle;
+    showNovelDetail(data.info, data.chapters);
+  } catch (e) {
+    showError(e.message);
+  }
+}
+
+function showNovelDetail(info, chapters) {
+  document.getElementById("historyList").style.display = "none";
+  document.getElementById("inputArea").style.display = "none";
+  const detail = document.getElementById("detailArea");
+  detail.style.display = "block";
+  let html = `
+    <div class="novel-title" title="${escHtml(info.author)} · ${info.status || ''} · ${info.words || ''} · ${info.chapters || ''}章">${escHtml(info.title)}</div>
+    <div class="tags">${(info.tags||[]).map(t => `<span>${escHtml(t)}</span>`).join('')}</div>
+    <div class="desc">${escHtml(info.description).replace(/\n/g, '<br>')}</div>
+    <div class="section-title">全部章节 (${(chapters||[]).length})</div>
+    <div class="chapter-list">`;
+  for (let i = 0; i < (chapters||[]).length; i++) {
+    html += `<a onclick="loadChapter(${i})">${escHtml(chapters[i].title)}</a>`;
+  }
+  html += `</div>`;
+  detail.innerHTML = html;
+  // Save history
+  api("/api/history/save", { method: "POST", body: { site: STATE.site, novel_id: STATE.novelId, novel_title: STATE.novelTitle, chapter_url: "", chapter_title: "", page: 1, total_pages: 1 } }).catch(() => {});
+}
+
+function backToDetail() {
+  document.getElementById("readerArea").style.display = "none";
+  document.getElementById("detailArea").style.display = "block";
+  STATE.readerVisible = false;
+}
+
+function backToHistory() {
+  document.getElementById("readerArea").style.display = "none";
+  document.getElementById("detailArea").style.display = "none";
+  document.getElementById("historyList").style.display = "block";
+  document.getElementById("inputArea").style.display = "block";
+  document.getElementById("panelTitle").textContent = "Reader";
+  STATE.readerVisible = false;
+  loadHistory();
+}
+
+// === Chapter Loading ===
+async function loadChapter(idx, pageIdx) {
+  if (idx < 0 || idx >= STATE.chapters.length) return;
+  STATE.currentChapIdx = idx;
+  STATE.currentPage = (pageIdx !== undefined && pageIdx !== null) ? pageIdx : 0;
+  const ch = STATE.chapters[idx];
+  document.getElementById("detailArea").style.display = "none";
+  const reader = document.getElementById("readerArea");
+  reader.style.display = "flex";
+  STATE.readerVisible = true;
+  document.getElementById("chapTitle").textContent = ch.title;
+  document.getElementById("pageText").textContent = ((idx === STATE.preloadedIdx && STATE.preloadedContent) || getCachedChapter(STATE.site, ch.url)) ? "恢复中..." : "获取中...";
+  document.getElementById("pageInfo").textContent = "";
+  document.getElementById("chapterOverlay").classList.remove("show");
+
+  const finish = (text) => {
+    STATE.pages = paginate(text);
+    if (STATE.currentPage < 0) STATE.currentPage = STATE.pages.length - 1;
+    if (STATE.currentPage >= STATE.pages.length) STATE.currentPage = STATE.pages.length - 1;
+    showPage();
+    saveCurrentProgress();
+    buildChapterOverlay();
+    preloadNextChapter(idx + 1);
+  };
+
+  if (idx === STATE.preloadedIdx && STATE.preloadedContent) {
+    const cached = STATE.preloadedContent;
+    STATE.preloadedIdx = -1;
+    STATE.preloadedContent = null;
+    finish(cached);
+    cacheChapter(STATE.site, ch.url, cached);
+    return;
+  }
+
+  const cached = getCachedChapter(STATE.site, ch.url);
+  if (cached) {
+    finish(cached);
+    return;
+  }
+
+  try {
+    const data = await api(SITE_API[STATE.site] + "/chapter/load", { method: "POST", body: { chapter_url: ch.url } });
+    if (data && data.captcha) {
+      showCaptchaDialog(data.captcha_image, data.captcha_action, data.captcha_redirect, () => loadChapter(idx, pageIdx));
+      return;
+    }
+    finish(data.content || "章节内容为空");
+    cacheChapter(STATE.site, ch.url, data.content || "");
+  } catch (e) {
+    document.getElementById("pageText").textContent = "加载失败: " + e.message;
+  }
+}
+
+function paginate(text) {
+  if (!text) return ["暂无内容"];
+  const rc = document.getElementById("readerContent");
+  const pt = document.getElementById("pageText");
+  const style = getComputedStyle(rc);
+  const ch = (rc.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)) || 500;
+  if (ch < 20) return [text];
+
+  const rawLines = text.split('\n');
+  const pages = [];
+  let pageLines = [];
+
+  for (const line of rawLines) {
+    pageLines.push(line);
+    pt.textContent = pageLines.join('\n');
+    if (pt.scrollHeight > ch) {
+      pageLines.pop();
+      pt.textContent = pageLines.join('\n');
+      while (pageLines.length > 0 && pt.scrollHeight > ch) {
+        pageLines.pop();
+        pt.textContent = pageLines.join('\n');
+      }
+      pages.push(pageLines.join('\n'));
+      pageLines = line === '' ? [] : [line];
+    }
+  }
+  if (pageLines.length > 0) pages.push(pageLines.join('\n'));
+  pt.textContent = pages[0] || "";
+  return pages.length > 0 ? pages : ["暂无内容"];
+}
+
+function showPage() {
+  const pages = STATE.pages;
+  const idx = STATE.currentPage;
+  if (idx < 0 || idx >= pages.length) return;
+  document.getElementById("pageText").textContent = pages[idx];
+  document.getElementById("pageInfo").textContent = `${idx + 1} / ${pages.length}`;
+  document.getElementById("pageNav").textContent = `${idx + 1} / ${pages.length}`;
+  saveCurrentProgress();
+}
+
+function nextPage() {
+  if (STATE.pages.length === 0) return;
+  if (STATE.currentPage < STATE.pages.length - 1) {
+    STATE.currentPage++;
+    showPage();
+  } else if (STATE.currentChapIdx < STATE.chapters.length - 1) {
+    loadChapter(STATE.currentChapIdx + 1);
+  }
+}
+
+function prevPage() {
+  if (STATE.currentPage > 0) {
+    STATE.currentPage--;
+    showPage();
+  } else if (STATE.currentChapIdx > 0) {
+    loadChapter(STATE.currentChapIdx - 1, -1);
+  }
+}
+
+function showPageJump() {
+  const p = prompt("跳转到第几页？", String(STATE.currentPage + 1));
+  if (p) {
+    const n = parseInt(p);
+    if (n >= 1 && n <= STATE.pages.length) {
+      STATE.currentPage = n - 1;
+      showPage();
+    }
+  }
+}
+
+// === Chapter Overlay ===
+function showChapterOverlay() {
+  document.getElementById("chapterOverlay").classList.add("show");
+  buildChapterOverlay();
+}
+
+function hideChapterOverlay() {
+  document.getElementById("chapterOverlay").classList.remove("show");
+}
+
+function buildChapterOverlay() {
+  const list = document.getElementById("chapterOverlayList");
+  list.innerHTML = "";
+  for (let i = 0; i < STATE.chapters.length; i++) {
+    const a = document.createElement("a");
+    a.textContent = STATE.chapters[i].title;
+    if (i === STATE.currentChapIdx) a.className = "active";
+    a.onclick = () => { hideChapterOverlay(); loadChapter(i); };
+    list.appendChild(a);
+  }
+}
+
+// === Progress Save ===
+function saveCurrentProgress() {
+  const ch = STATE.chapters[STATE.currentChapIdx];
+  if (!ch) return;
+  api("/api/history/save", { method: "POST", body: {
+    site: STATE.site,
+    novel_id: STATE.novelId,
+    novel_title: STATE.novelTitle,
+    chapter_url: ch.url,
+    chapter_title: ch.title,
+    page: STATE.currentPage + 1,
+    total_pages: STATE.pages.length
+  } }).catch(() => {});
+}
+
+// === Utility ===
+function showLoading(msg) {
+  document.getElementById("historyList").style.display = "none";
+  document.getElementById("inputArea").style.display = "none";
+  document.getElementById("detailArea").style.display = "block";
+  document.getElementById("detailArea").innerHTML = `<div class="spinner">${msg}</div>`;
+}
+
+function showError(msg) {
+  document.getElementById("detailArea").style.display = "block";
+  document.getElementById("detailArea").innerHTML = `<div class="spinner" style="color:#e74c3c">${msg}</div>`;
+}
+
+function logout() {
+  if (!confirm("确认退出？")) return;
+  api("/api/logout", { method: "POST" }).then(() => { window.location.href = "/login"; }).catch(() => {});
+}
+
+// === Keyboard Shortcuts ===
+document.addEventListener("keydown", function(e) {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+  if (e.key === "a" || e.key === "A") { prevPage(); e.preventDefault(); }
+  if (e.key === "d" || e.key === "D") { nextPage(); e.preventDefault(); }
+  if (e.key === "s" || e.key === "S") {
+    document.getElementById("leftPanel").classList.toggle("hidden");
+    e.preventDefault();
+  }
+});
+
+
+
+// === Site Selector ===
+const SITE_NAMES = {};
+
+async function loadSites() {
+  try {
+    const sites = await api("/api/sites");
+    const sel = document.getElementById("siteSelect");
+    sel.innerHTML = "";
+    for (const s of sites) {
+      const opt = document.createElement("option");
+      opt.value = s.id;
+      opt.textContent = s.name;
+      sel.appendChild(opt);
+      SITE_NAMES[s.id] = s.name;
+    }
+    STATE.site = sel.value;
+    sel.onchange = () => { STATE.site = sel.value; };
+  } catch (e) {}
+}
+
+// === Inactivity: Screensaver + Auto-Logout ===
+const SCREENSAVER_TIMEOUT = 60000;
+const IDLE_TIMEOUT = 300000;
+let idleTimer = null;
+
+function hideScreensaver() {
+  document.getElementById("screensaver").classList.remove("show");
+  STATE.screensaverActive = false;
+}
+
+function resetIdle() {
+  STATE.lastActivity = Date.now();
+}
+
+function showScreensaver() {
+  document.getElementById("screensaver").classList.add("show");
+  STATE.screensaverActive = true;
+}
+
+function startIdleMonitor() {
+  resetIdle();
+  const events = ["click", "keydown", "touchstart", "scroll"];
+  for (const ev of events) {
+    document.addEventListener(ev, resetIdle, { passive: true });
+  }
+  let ssClickCount = 0;
+  let ssClickTimer = null;
+  document.querySelector("#screensaver .ss-text").addEventListener("click", () => {
+    ssClickCount++;
+    if (ssClickCount === 1) {
+      ssClickTimer = setTimeout(() => { ssClickCount = 0; }, 2000);
+    }
+    if (ssClickCount >= 4) {
+      clearTimeout(ssClickTimer);
+      ssClickTimer = null;
+      ssClickCount = 0;
+      hideScreensaver();
+    }
+  });
+  idleTimer = setInterval(() => {
+    const elapsed = Date.now() - STATE.lastActivity;
+    if (!STATE.screensaverActive && elapsed > SCREENSAVER_TIMEOUT) {
+      showScreensaver();
+    }
+    if (elapsed > IDLE_TIMEOUT) {
+      clearInterval(idleTimer);
+      api("/api/logout", { method: "POST", skipAuth: true }).finally(() => {
+        window.location.href = "/login";
+      });
+    }
+  }, 5000);
+}
+
+// === CAPTCHA ===
+let _captchaState = null;
+let _captchaRetry = null;
+
+function showCaptchaDialog(imageUrl, formAction, redirectUrl, retryFn) {
+  _captchaState = { imageUrl, formAction, redirectUrl };
+  _captchaRetry = retryFn;
+  document.getElementById("captchaImage").src = imageUrl;
+  document.getElementById("captchaInput").value = "";
+  document.getElementById("captchaStatus").textContent = "";
+  document.getElementById("captchaOverlay").classList.add("show");
+  setTimeout(() => document.getElementById("captchaInput").focus(), 300);
+  document.getElementById("captchaInput").onkeydown = (e) => { if (e.key === "Enter") submitCaptcha(); };
+}
+
+function closeCaptchaDialog() {
+  document.getElementById("captchaOverlay").classList.remove("show");
+  _captchaState = null;
+}
+
+function refreshCaptcha() {
+  if (_captchaState) {
+    const t = Date.now();
+    const newUrl = _captchaState.imageUrl.replace(/t=\d+/, "t=" + t);
+    _captchaState.imageUrl = newUrl;
+    document.getElementById("captchaImage").src = newUrl;
+    document.getElementById("captchaInput").value = "";
+    document.getElementById("captchaStatus").textContent = "";
+  }
+}
+
+async function submitCaptcha() {
+  const code = document.getElementById("captchaInput").value.trim();
+  if (!code) { document.getElementById("captchaStatus").textContent = "请输入验证码"; return; }
+  if (!_captchaState) return;
+  
+  const btn = document.querySelector("#captchaOverlay button");
+  btn.disabled = true;
+  document.getElementById("captchaStatus").textContent = "提交中...";
+  
+  try {
+    const res = await fetch("/api/alicesw/captcha/solve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: code,
+        form_action: _captchaState.formAction,
+        redirect_url: _captchaState.redirectUrl,
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      document.getElementById("captchaStatus").textContent = "验证通过！";
+      closeCaptchaDialog();
+      if (_captchaRetry) setTimeout(_captchaRetry, 500);
+    } else {
+      document.getElementById("captchaStatus").textContent = data.error || "验证失败";
+      refreshCaptcha();
+    }
+  } catch (e) {
+    document.getElementById("captchaStatus").textContent = "请求失败: " + e.message;
+  }
+  btn.disabled = false;
+}
+
+// === Init ===
+loadSites();
+loadHistory();
+startIdleMonitor();
+document.getElementById("pageFooter").addEventListener("click", () => document.body.focus());
+</script>
+</body>
+</html>
