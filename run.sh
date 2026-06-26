@@ -39,6 +39,10 @@ print('xray ready')
 }
 
 write_xray_config() {
+  if [ -z "$PROXY_SUB_URL" ]; then
+    echo "[run] PROXY_SUB_URL not set, skipping xray config"
+    return 0
+  fi
   local cfg
   cfg=$("$VENV_PYTHON" -c "
 import sys, json
@@ -60,16 +64,20 @@ except Exception as e:
     echo "[run] xray config generated via proxy_manager ($tag)"
   else
     echo "[run] proxy_manager failed to generate config, check PROXY_SUB_URL"
-    exit 1
+    return 1
   fi
 }
 
 start_xray() {
   ensure_xray
+  write_xray_config || return 0
+  if [ ! -f "$XRAY_DIR/config.json" ]; then
+    echo "[run] xray disabled (no proxy config)"
+    return 0
+  fi
   if [ -f "$XRAY_PID_FILE" ] && kill -0 "$(cat "$XRAY_PID_FILE")" 2>/dev/null; then
     return
   fi
-  write_xray_config
   nohup "$XRAY_DIR/xray" run -c "$XRAY_DIR/config.json" > /tmp/xray.log 2>&1 &
   echo $! > "$XRAY_PID_FILE"
   sleep 2
