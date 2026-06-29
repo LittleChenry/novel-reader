@@ -88,10 +88,6 @@ html, body { height: 100%; overflow: hidden; font-family: -apple-system, "Noto S
 /* Footer */
 .page-footer { position: fixed; bottom: 0; left: 0; right: 0; height: 36px; z-index: 9998; background: rgba(0,0,0,0.15); display: flex; align-items: center; justify-content: center; font-size: 11px; color: #888; cursor: pointer; user-select: none; }
 
-/* Screensaver */
-.screensaver { display: none; position: fixed; inset: 0; z-index: 9999; background: #f6f6f7; align-items: center; justify-content: center; font-family: -apple-system, "Noto Sans SC", "Microsoft YaHei", sans-serif; }
-.screensaver.show { display: flex; }
-.screensaver .ss-text { font-size: 28px; color: #3c3c43; letter-spacing: 1px; user-select: none; }
 
 @media (max-width: 900px) {
   .left-panel { width: 100%; min-width: 100%; }
@@ -156,15 +152,11 @@ html, body { height: 100%; overflow: hidden; font-family: -apple-system, "Noto S
 
   <!-- Right: Learning site -->
   <div class="right-panel">
-    <iframe src="https://learnopencode.com/2-daily/" title="OpenCode 教程"></iframe>
+    <iframe src="https://learnopencode.com/5-advanced/02b-agent-patterns.html" title="OpenCode 教程"></iframe>
   </div>
 </div>
 
 <div class="page-footer" id="pageFooter">Copyright © 2026 learnopencode. All rights reserved.</div>
-
-<div class="screensaver" id="screensaver">
-  <div class="ss-text">Welcome OpenCode Reader</div>
-</div>
 
 <div class="chapter-overlay" id="captchaOverlay">
   <div class="chapter-overlay-content" onclick="event.stopPropagation()">
@@ -196,7 +188,7 @@ const STATE = {
   preloadedIdx: -1,
   preloadedContent: null,
   lastActivity: Date.now(),
-  screensaverActive: false,
+  sessionExpired: false,
 };
 
 const SITE_API = {
@@ -530,6 +522,10 @@ function showPageJump() {
 function showChapterOverlay() {
   document.getElementById("chapterOverlay").classList.add("show");
   buildChapterOverlay();
+  requestAnimationFrame(() => {
+    const active = document.querySelector("#chapterOverlayList .active");
+    if (active) active.scrollIntoView({ block: "center" });
+  });
 }
 
 function hideChapterOverlay() {
@@ -614,57 +610,41 @@ async function loadSites() {
   } catch (e) {}
 }
 
-// === Inactivity: Screensaver + Auto-Logout ===
-const SCREENSAVER_TIMEOUT = 60000;
-const IDLE_TIMEOUT = 300000;
+// === Inactivity: Auto-Hide + Session Timeout ===
+const READER_HIDE_TIMEOUT = 60000;
+const SESSION_TIMEOUT = 600000;
 let idleTimer = null;
-
-function hideScreensaver() {
-  document.getElementById("screensaver").classList.remove("show");
-  STATE.screensaverActive = false;
-}
 
 function resetIdle() {
   STATE.lastActivity = Date.now();
 }
 
-function showScreensaver() {
-  document.getElementById("screensaver").classList.add("show");
-  STATE.screensaverActive = true;
+function onUserActivity(e) {
+  STATE.lastActivity = Date.now();
+  if (STATE.sessionExpired) {
+    window.location.href = "/login";
+    return;
+  }
+  if (e.type === "keydown" && (e.key === "s" || e.key === "S")) return;
+  document.getElementById("leftPanel").classList.remove("hidden");
 }
 
 function startIdleMonitor() {
   resetIdle();
   const events = ["click", "keydown", "touchstart", "scroll"];
   for (const ev of events) {
-    document.addEventListener(ev, resetIdle, { passive: true });
+    document.addEventListener(ev, onUserActivity, { passive: true });
   }
-  let ssClickCount = 0;
-  let ssClickTimer = null;
-  document.querySelector("#screensaver .ss-text").addEventListener("click", () => {
-    ssClickCount++;
-    if (ssClickCount === 1) {
-      ssClickTimer = setTimeout(() => { ssClickCount = 0; }, 2000);
-    }
-    if (ssClickCount >= 4) {
-      clearTimeout(ssClickTimer);
-      ssClickTimer = null;
-      ssClickCount = 0;
-      hideScreensaver();
-    }
-  });
   idleTimer = setInterval(() => {
     const elapsed = Date.now() - STATE.lastActivity;
-    if (!STATE.screensaverActive && elapsed > SCREENSAVER_TIMEOUT) {
-      showScreensaver();
+    if (elapsed > READER_HIDE_TIMEOUT) {
+      document.getElementById("leftPanel").classList.add("hidden");
     }
-    if (elapsed > IDLE_TIMEOUT) {
-      clearInterval(idleTimer);
-      api("/api/logout", { method: "POST", skipAuth: true }).finally(() => {
-        window.location.href = "/login";
-      });
+    if (elapsed > SESSION_TIMEOUT && !STATE.sessionExpired) {
+      STATE.sessionExpired = true;
+      api("/api/logout", { method: "POST", skipAuth: true }).catch(() => {});
     }
-  }, 5000);
+  }, 1000);
 }
 
 // === CAPTCHA ===

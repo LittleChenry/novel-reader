@@ -541,6 +541,10 @@ function backToHistory() {
 
 function showMobileChapterOverlay() {
   document.getElementById("chapterOverlay").classList.add("active");
+  requestAnimationFrame(() => {
+    const active = document.querySelector("#chapterOverlayList .active");
+    if (active) active.scrollIntoView({ block: "center" });
+  });
 }
 
 function hideMobileChapterOverlay() {
