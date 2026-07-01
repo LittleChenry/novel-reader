@@ -626,6 +626,7 @@ function onUserActivity(e) {
     return;
   }
   if (e.type === "keydown" && (e.key === "s" || e.key === "S")) return;
+  if (e.type === "click" && e.target.closest("#pageFooter")) return;
   document.getElementById("leftPanel").classList.remove("hidden");
 }
 
